@@ -10,23 +10,25 @@ changes that made it work at LLM scale.
 Muon is SGD-with-momentum where the momentum buffer is replaced by its nearest
 semi-orthogonal matrix before the step:
 
-```
-M_t = mu * M_{t-1} + G_t
-O_t = NewtonSchulz(mu * M_t + G_t)        # Nesterov variant
-W_t = W_{t-1} - lr * (0.2 * sqrt(max(A,B)) * O_t + lambda * W_{t-1})
+```math
+\begin{aligned}
+M_t &= \mu M_{t-1} + G_t \\
+O_t &= \operatorname{NewtonSchulz}(\mu M_t + G_t) && \text{Nesterov variant} \\
+W_t &= W_{t-1} - \mathrm{lr} \cdot \big( 0.2 \sqrt{\max(A,B)}\, O_t + \lambda W_{t-1} \big)
+\end{aligned}
 ```
 
 Orthogonalizing means every direction in the update gets comparable magnitude,
 so anisotropic curvature stops dictating the step size. The orthogonal factor
-is approximated with 5 iterations of the quintic `f(x) = 3.4445x - 4.7750x³ +
-2.0315x⁵` in bfloat16 — deliberately *inexact*, because Muon does not need
+is approximated with 5 iterations of the quintic $f(x) = 3.4445x - 4.7750x^3 + 2.0315x^5$
+in bfloat16 — deliberately *inexact*, because Muon does not need
 exact orthogonality and the iteration is the per-step cost.
 
 Moonshot's two additions:
 
 1. **decoupled weight decay** — without it, weights grow unbounded over a long run
-2. **consistent update RMS** — an orthogonalized `[A, B]` update has RMS
-   `1/sqrt(max(A,B))`, so scaling by `0.2 * sqrt(max(A,B))` pins it at 0.2 for
+2. **consistent update RMS** — an orthogonalized $A \times B$ update has RMS
+   $1/\sqrt{\max(A,B)}$, so scaling by $0.2\sqrt{\max(A,B)}$ pins it at 0.2 for
    every shape. That lands in AdamW's usual 0.2–0.4 band, which is why **you can
    reuse your AdamW learning rate and weight decay directly.**
 
@@ -86,7 +88,7 @@ What the checks pin down:
 ## Honest scope
 
 `test_muon.py` deliberately does **not** assert "Muon beats AdamW". On a
-full-batch toy, AdamW's `m/sqrt(v)` saturates near 1 and gives it a ~5x larger
+full-batch toy, AdamW's $m/\sqrt{v}$ saturates near 1 and gives it a ~5x larger
 effective step, so it wins. The paper's ~2x compute-efficiency result is a
 claim about billion-parameter pretraining and a CPU test cannot settle it — so
 `bench.py` prints both curves and asserts only that each one trains.

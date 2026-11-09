@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muon — interactive demo</title>
+<meta name="description" content="Watch Muon's Newton–Schulz quintic flatten a matrix's singular values, see why Moonshot's 0.2·√max(A,B) scale makes the update size shape-independent, and race Muon against SGD+momentum.">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body,{delimiters:[{left:'\\[',right:'\\]',display:true},{left:'\\(',right:'\\)',display:false}],throwOnError:false})"></script>
+<style>
+:root{
+  --bg:#fbfaf7; --panel:#ffffff; --ink:#1b1c1f; --muted:#62656d; --line:#e4e2dc;
+  --accent:#2f5bd3; --accent-2:#d0582f; --good:#1f8a5b; --warn:#b7791f;
+  --code-bg:#f2f0ea;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#111216; --panel:#181a20; --ink:#e8e8ea; --muted:#9a9ca5; --line:#2a2d35;
+    --accent:#7b9cff; --accent-2:#ff8a5c; --good:#4fd18f; --warn:#e8b04a;
+    --code-bg:#1f2229;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+main{max-width:1080px;margin:0 auto;padding:40px 16px 80px}
+a{color:var(--accent)}
+code{overflow-wrap:anywhere}
+header .kicker{font:600 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+header h1{font-size:clamp(26px,4vw,38px);line-height:1.15;margin:10px 0 8px;letter-spacing:-.01em}
+header .cite{color:var(--muted);margin:0 0 4px}
+header .links{display:flex;gap:16px;flex-wrap:wrap;font-size:14px;margin-top:8px}
+.lede{font-size:17px;max-width:72ch;margin:24px 0}
+.eq .katex-display{margin:.4em 0}
+.eq{font-size:15px;background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;margin:16px 0}
+section.demo{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;margin:28px 0}
+section.demo h2{font-size:19px;margin:0 0 4px}
+section.demo > p.sub{color:var(--muted);margin:0 0 16px;max-width:75ch}
+.grid{display:grid;grid-template-columns:260px 1fr;gap:24px;align-items:start}
+@media (max-width:760px){.grid{grid-template-columns:1fr}}
+.controls{display:flex;flex-direction:column;gap:14px}
+.ctl label{display:block;position:relative;padding-right:5.5em;font-size:13px;color:var(--muted);margin-bottom:4px}
+.ctl label output{position:absolute;right:0;top:0;font-family:var(--mono);color:var(--ink)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+select,button,input[type=text],input[type=number]{font:inherit;font-size:14px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+button{cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.viz{min-width:0}
+canvas,svg.chart{display:block;width:100%;height:auto;max-width:100%}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px}
+.stat{border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.stat .k{font-size:12px;color:var(--muted)}
+.stat .v{font:600 18px/1.3 var(--mono)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.caption{font-size:13px;color:var(--muted);margin-top:8px}
+.scope{color:var(--muted);font-size:14px;max-width:75ch}
+.scope h2{color:var(--ink);font-size:17px}
+footer{color:var(--muted);font-size:13px;margin-top:48px;border-top:1px solid var(--line);padding-top:16px}
+</style>
+<style>
+table.rms{width:100%;border-collapse:collapse;font:13.5px/1.5 var(--mono)}
+table.rms th,table.rms td{text-align:right;padding:6px 10px;border-bottom:1px solid var(--line)}
+table.rms th:first-child,table.rms td:first-child{text-align:left}
+table.rms th{font:600 12px/1.3 var(--sans);color:var(--muted)}
+table.rms tr.spread td{font-weight:600;border-bottom:none}
+@media (max-width:760px){table.rms{display:block;overflow-x:auto}}
+.bad{color:var(--accent-2)} .ok{color:var(--good)}
+.note{border-left:3px solid var(--warn);padding:8px 12px;background:var(--code-bg);border-radius:0 6px 6px 0;font-size:14px;margin-top:14px;max-width:75ch}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+h3.vt{font-size:14px;margin:18px 0 6px;color:var(--muted);font-weight:600}
+h3.vt:first-child{margin-top:0}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="kicker">Paper recreation · interactive demo</div>
+  <h1>Muon is Scalable for LLM Training</h1>
+  <p class="cite">Liu et al., Moonshot AI — <a href="https://arxiv.org/abs/2502.16982">arXiv:2502.16982</a>. Muon itself is by Keller Jordan et al. (2024).</p>
+  <div class="links"><a href="https://github.com/msanvarov/muon-minimal">Source: msanvarov/muon-minimal</a></div>
+</header>
+
+<p class="lede">Muon is SGD with momentum, plus one extra step: before each update, the momentum matrix is replaced by its nearest semi-orthogonal matrix. Every direction then moves by about the same amount, so a few steep directions can no longer set the step size for the rest. Moonshot added the two changes that made it work at LLM scale: decoupled weight decay, and an update scale that keeps the update RMS at \(0.2\) for any matrix shape. Because of that scale, you can reuse your AdamW learning rate as is.</p>
+<div class="eq">\[
+\begin{aligned}
+M_t &= \mu\, M_{t-1} + G_t \\
+O_t &= \operatorname{NewtonSchulz}\!\left(\mu\, M_t + G_t\right) && \text{Nesterov variant, 5 iterations} \\
+W_t &= W_{t-1} - \eta\left(0.2\,\sqrt{\max(A,B)}\; O_t + \lambda\, W_{t-1}\right) && W \in \mathbb{R}^{A\times B}
+\end{aligned}
+\]
+\[
+\begin{aligned}
+&\textbf{NewtonSchulz:}\quad X \leftarrow G / \lVert G\rVert_F, \quad\text{then 5 times:}\quad A = XX^\top,\;\; X \leftarrow aX + \left(bA + cA^2\right)X \\
+&(a,b,c) = (3.4445,\,-4.7750,\,2.0315) \quad\Longrightarrow\quad \text{every singular value } \sigma \mapsto a\sigma + b\sigma^3 + c\sigma^5
+\end{aligned}
+\]</div>
+
+<section class="demo">
+  <h2>1 · Newton–Schulz orthogonalization</h2>
+  <p class="sub">Build a matrix with a chosen condition number, then run muon.py's quintic on it. Each iteration applies the same scalar polynomial to every singular value, so small ones get pulled up and large ones pulled down. Move the step slider to watch the spread collapse. Five steps put the values in a band around \([0.65,\,1.2]\), not at exactly \(1\). The paper calls this inexact orthogonalization, and it's on purpose: it's cheaper, and Muon doesn't need more.</p>
+  <div class="grid">
+    <div class="controls">
+      <div class="ctl"><label for="shape">Matrix shape</label>
+        <select id="shape"><option value="16x16">16 × 16 (square)</option><option value="8x32">8 × 32 (wide)</option><option value="32x8">32 × 8 (tall)</option></select></div>
+      <div class="ctl"><label for="cond">Condition number <output for="cond"></output></label>
+        <input id="cond" type="range" min="0" max="4" step="0.25" value="2" data-fmt="'10^' + v + ' = ' + (+Math.pow(10, v).toPrecision(3)).toLocaleString()"></div>
+      <div class="ctl"><label for="nsteps">Iterations <output for="nsteps"></output></label>
+        <input id="nsteps" type="range" min="0" max="8" step="1" value="5"></div>
+      <div class="row"><button id="resample">New random matrix</button></div>
+      <p class="caption">Step 0 is the input after dividing by its Frobenius norm, which guarantees every \(\sigma \le 1\). The repo runs this in bfloat16. This page uses float64, so it shows the polynomial without rounding noise. Push the condition number to \(10^4\) and five steps aren't enough: the smallest values are still climbing toward the band.</p>
+    </div>
+    <div class="viz">
+      <h3 class="vt">Every singular value, per iteration (log scale)</h3>
+      <canvas id="traj" aria-label="Singular values over Newton–Schulz iterations"></canvas>
+      <div class="legend"><span><i style="background:var(--accent-2)"></i>largest \(\sigma\)</span><span><i style="background:var(--accent)"></i>smallest \(\sigma\)</span><span>dashed line = selected iteration</span></div>
+      <h3 class="vt">The scalar map \(f(\sigma) = 3.4445\,\sigma - 4.7750\,\sigma^3 + 2.0315\,\sigma^5\)</h3>
+      <canvas id="quintic" aria-label="Quintic polynomial with the current step's singular values"></canvas>
+      <div class="legend"><span><i style="background:var(--accent)"></i>\(f(\sigma)\)</span><span><i style="background:var(--muted)"></i>\(y = \sigma\)</span><span><i style="background:var(--accent-2)"></i>\((\sigma_{\text{before}},\, \sigma_{\text{after}})\) at the selected step</span><span><i style="background:var(--good);opacity:.35"></i>band where \(\sigma\) ends up</span></div>
+      <div class="stats" id="ns-stats"></div>
+    </div>
+  </div>
+</section>
+
+<section class="demo">
+  <h2>2 · Same RMS for every shape</h2>
+  <p class="sub">An orthogonalized \(A\times B\) matrix has RMS \(1/\sqrt{\max(A,B)}\), so a \(16\times 512\) matrix moves about 3× less per step than a \(64\times 64\) one, and no single learning rate fits both. Moonshot multiplies by \(0.2\sqrt{\max(A,B)}\), which pins the RMS near \(0.2\) for every shape. That lands inside AdamW's usual \(0.2\)–\(0.4\) range. Same setup as <code>test_update_rms_is_consistent_across_shapes</code>: \(\eta = 1\), no momentum, a Gaussian gradient.</p>
+  <div id="rms-table"><p class="caption">Computing…</p></div>
+  <p class="caption">With the scale, the spread stays under \(1.3\times\). Without it, the spread is over \(2.5\times\). Those are the same thresholds <code>test_muon.py</code> asserts.</p>
+</section>
+
+<section class="demo">
+  <h2>3 · The mechanism, isolated</h2>
+  <p class="sub">A deep linear net (two \(48\times 48\) layers) fits an ill-conditioned target using all 512 samples every step. Both runs use the same learning rate and the same momentum (\(\mu = 0.95\)). The only difference is whether the momentum goes through Newton–Schulz first. This mirrors <code>test_orthogonalization_beats_raw_momentum</code>.</p>
+  <div class="grid">
+    <div class="controls">
+      <div class="ctl"><label for="lr">Learning rate <output for="lr"></output></label>
+        <input id="lr" type="range" min="-3" max="-1" step="0.05" value="-1.7" data-fmt="Math.pow(10, v).toPrecision(2)"></div>
+      <div class="ctl"><label for="steps">Steps <output for="steps"></output></label>
+        <input id="steps" type="range" min="20" max="200" step="10" value="60"></div>
+      <div class="ctl"><label for="decade">Target condition number <output for="decade"></output></label>
+        <input id="decade" type="range" min="0" max="3" step="0.5" value="2" data-fmt="'10^' + v"></div>
+      <div class="row"><button id="reseed">New seed</button></div>
+    </div>
+    <div class="viz">
+      <canvas id="race" aria-label="Loss curves, Muon versus SGD with momentum"></canvas>
+      <div class="legend"><span><i style="background:var(--accent)"></i>Muon (Newton–Schulz + Nesterov)</span><span><i style="background:var(--accent-2)"></i>SGD + momentum</span><span>y = loss left, as a fraction of the loss at init (log scale)</span></div>
+      <div class="stats" id="race-stats"></div>
+    </div>
+  </div>
+  <p class="note">What this does <strong>not</strong> show is Muon beating AdamW. On a full-batch toy like this, AdamW's \(m/\sqrt{v}\) saturates near \(1\), its effective step is about \(5\times\) larger, and it wins. The paper's \(\sim 2\times\) compute-efficiency result comes from billion-parameter pretraining, which a browser tab can't settle. That's why the repo's <code>bench.py</code> only checks that both optimizers train.</p>
+</section>
+
+<section class="scope">
+  <h2>What this demo simplifies</h2>
+  <p>Everything here is toy scale: matrices up to 512 wide and a two-layer linear net, not a transformer. The math runs in float64, while the repo's <code>newtonschulz5</code> runs in bfloat16 on purpose, so real singular values are slightly noisier than the ones shown. Weight decay is off in the race, which matches the test it mirrors. Two things are left out entirely: the ZeRO-1 distributed sharding of the Newton–Schulz work (the paper's other systems contribution, and what makes Muon practical on a cluster), and the AdamW side of the hybrid that handles embeddings, the LM head and norms.</p>
+</section>
+
+<footer>Everything on this page runs in your browser in plain JavaScript. It's a small-scale re-run of the mechanism in the repo's PyTorch code, not the trained model.</footer>
+</main>
+<script>
+// ---- shared helpers (keep identical across the five demos) ----
+function rng(seed){ // mulberry32
+  let a = seed >>> 0;
+  const u = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  u.normal = () => { let x = 0; while (x === 0) x = u(); return Math.sqrt(-2 * Math.log(x)) * Math.cos(2 * Math.PI * u()); };
+  return u;
+}
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+// Crisp canvas sized to its CSS width; returns 2d ctx and logical size.
+function setupCanvas(cv, aspect){
+  const w = cv.clientWidth || cv.parentElement.clientWidth, h = Math.round(w * aspect), d = devicePixelRatio || 1;
+  cv.width = w * d; cv.height = h * d; cv.style.height = h + 'px';
+  const ctx = cv.getContext('2d'); ctx.setTransform(d, 0, 0, d, 0, 0); return { ctx, w, h };
+}
+// Sequential colormap 0..1 (light->accent). Diverging: pass {diverging:true} for -1..1.
+function color(v, opts = {}){
+  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const bg = dark ? [24,26,32] : [255,255,255];
+  const a = dark ? [123,156,255] : [47,91,211], b = dark ? [255,138,92] : [208,88,47];
+  let c = a, t = v;
+  if (opts.diverging){ c = v < 0 ? b : a; t = Math.abs(v); }
+  t = Math.max(0, Math.min(1, t));
+  return `rgb(${bg.map((x,i)=>Math.round(x + (c[i]-x)*t)).join(',')})`;
+}
+function heatmap(ctx, M, x, y, w, h, opts = {}){
+  const R = M.length, C = M[0].length, cw = w / C, ch = h / R;
+  for (let i = 0; i < R; i++) for (let j = 0; j < C; j++){
+    const v = M[i][j]; if (v === null || Number.isNaN(v)) continue;
+    ctx.fillStyle = color(v, opts); ctx.fillRect(x + j*cw, y + i*ch, Math.ceil(cw), Math.ceil(ch));
+  }
+  ctx.strokeStyle = css('--line'); ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
+}
+// Line chart. series: [{data:[[x,y],...], color, label, dash}]. opts: {logY, yMin, yMax, xLabel, yLabel}
+function lineChart(cv, series, opts = {}){
+  const { ctx, w, h } = setupCanvas(cv, opts.aspect || 0.45), pad = { l: 48, r: 12, t: 10, b: 30 };
+  ctx.clearRect(0, 0, w, h);
+  const tf = v => opts.logY ? Math.log10(Math.max(v, 1e-12)) : v;
+  const xs = series.flatMap(s => s.data.map(p => p[0])), ys = series.flatMap(s => s.data.map(p => tf(p[1])));
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const y0 = opts.yMin !== undefined ? tf(opts.yMin) : Math.min(...ys), y1 = opts.yMax !== undefined ? tf(opts.yMax) : Math.max(...ys);
+  const X = v => pad.l + (v - x0) / ((x1 - x0) || 1) * (w - pad.l - pad.r);
+  const Y = v => h - pad.b - (tf(v) - y0) / ((y1 - y0) || 1) * (h - pad.t - pad.b);
+  ctx.font = '11px ' + css('--mono'); ctx.fillStyle = css('--muted'); ctx.strokeStyle = css('--line');
+  for (let k = 0; k <= 4; k++){
+    const yv = y0 + (y1 - y0) * k / 4, py = h - pad.b - k / 4 * (h - pad.t - pad.b);
+    ctx.beginPath(); ctx.moveTo(pad.l, py); ctx.lineTo(w - pad.r, py); ctx.stroke();
+    const lab = opts.logY ? (p => p < 1e-3 || p >= 1e4 ? p.toExponential(0) : String(+p.toPrecision(2)))(10 ** yv) : (Math.abs(yv) >= 100 ? yv.toFixed(0) : yv.toPrecision(3));
+    ctx.textAlign = 'right'; ctx.fillText(lab, pad.l - 6, py + 4);
+  }
+  ctx.textAlign = 'center';
+  for (let k = 0; k <= 4; k++){ const xv = x0 + (x1 - x0) * k / 4; ctx.fillText(+xv.toPrecision(3), X(xv), h - pad.b + 16); }
+  if (opts.xLabel) ctx.fillText(opts.xLabel, (pad.l + w - pad.r) / 2, h - 2);
+  for (const s of series){
+    ctx.strokeStyle = s.color; ctx.lineWidth = s.width || 2; ctx.setLineDash(s.dash || []);
+    ctx.beginPath(); s.data.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))); ctx.stroke();
+  }
+  ctx.setLineDash([]); ctx.lineWidth = 1;
+  return { X, Y, ctx, w, h, pad };
+}
+function setStats(el, items){ // items: [[label, value], ...]
+  el.innerHTML = items.map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+}
+// Bind a range input to its <output> and a callback. Usage: <input id=x type=range> <output for=x>
+function bind(id, fn){
+  const el = document.getElementById(id), out = document.querySelector(`output[for="${id}"]`);
+  const f = el.dataset.fmt ? new Function('v', 'return ' + el.dataset.fmt) : v => v;
+  const go = () => { if (out) out.textContent = f(+el.value); fn(); };
+  el.addEventListener('input', go); if (out) out.textContent = f(+el.value);
+  return () => +el.value;
+}
+let __raf = 0; const schedule = fn => { cancelAnimationFrame(__raf); __raf = requestAnimationFrame(fn); };
+addEventListener('resize', () => window.render && schedule(window.render));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => window.render && window.render());
+// ---- end shared helpers ----
+</script>
+<script>
+// ---- core:start (pure math; also loaded by the node self-check) ----
+const NS = [3.4445, -4.7750, 2.0315]; // muon.py NS_COEFFS
+const M = (r, c, d = new Float64Array(r * c)) => ({ r, c, d });
+function mm(A, B){
+  const C = M(A.r, B.c), a = A.d, b = B.d, o = C.d, n = A.c, m = B.c;
+  for (let i = 0; i < A.r; i++) for (let k = 0; k < n; k++){
+    const v = a[i * n + k]; if (!v) continue;
+    const bo = k * m, oo = i * m; for (let j = 0; j < m; j++) o[oo + j] += v * b[bo + j];
+  }
+  return C;
+}
+function tr(A){ const B = M(A.c, A.r); for (let i = 0; i < A.r; i++) for (let j = 0; j < A.c; j++) B.d[j * A.r + i] = A.d[i * A.c + j]; return B; }
+function lin(al, A, be = 0, B = null){ const C = M(A.r, A.c); for (let i = 0; i < C.d.length; i++) C.d[i] = al * A.d[i] + (B ? be * B.d[i] : 0); return C; }
+const frob = A => { let s = 0; for (const v of A.d) s += v * v; return Math.sqrt(s); };
+const rmsOf = A => frob(A) / Math.sqrt(A.d.length);
+function gauss(r, c, u){ const A = M(r, c); for (let i = 0; i < A.d.length; i++) A.d[i] = u.normal(); return A; }
+function orthCols(A){ // modified Gram-Schmidt: r x c with orthonormal columns (c <= r)
+  const Q = lin(1, A), { r, c } = Q, q = Q.d;
+  for (let j = 0; j < c; j++){
+    for (let p = 0; p < j; p++){ let dot = 0; for (let i = 0; i < r; i++) dot += q[i*c+j] * q[i*c+p]; for (let i = 0; i < r; i++) q[i*c+j] -= dot * q[i*c+p]; }
+    let n = 0; for (let i = 0; i < r; i++) n += q[i*c+j] ** 2; n = Math.sqrt(n); for (let i = 0; i < r; i++) q[i*c+j] /= n;
+  }
+  return Q;
+}
+const logspace = (a, b, n) => Array.from({ length: n }, (_, i) => Math.pow(10, a + (b - a) * (n > 1 ? i / (n - 1) : 0)));
+function withSpectrum(r, c, sig, u){ // U diag(sig) V^T, random orthogonal U, V
+  const k = Math.min(r, c), U = orthCols(gauss(r, k, u)), V = orthCols(gauss(c, k, u));
+  for (let i = 0; i < r; i++) for (let j = 0; j < k; j++) U.d[i * k + j] *= sig[j];
+  return mm(U, tr(V));
+}
+// muon.py newtonschulz5, returning every iterate (index 0 = normalized input)
+function nsTrace(G, steps = 5, eps = 1e-7){
+  const [a, b, c] = NS, tall = G.r > G.c;
+  let X = tall ? tr(G) : lin(1, G);
+  X = lin(1 / (frob(X) + eps), X);
+  const out = [X];
+  for (let s = 0; s < steps; s++){
+    const A = mm(X, tr(X)), B = lin(b, A, c, mm(A, A));
+    X = lin(a, X, 1, mm(B, X)); out.push(X);
+  }
+  return tall ? out.map(tr) : out;
+}
+const ns5 = (G, steps = 5) => nsTrace(G, steps)[steps];
+function jacobiEig(S){ // cyclic Jacobi for a small symmetric matrix
+  const n = S.r, a = Float64Array.from(S.d);
+  let tot = 0; for (const v of a) tot += v * v;
+  for (let sweep = 0; sweep < 60; sweep++){
+    let off = 0; for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) off += a[p*n+q] ** 2;
+    if (off <= 1e-30 * tot) break;
+    for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++){
+      const apq = a[p*n+q]; if (apq === 0) continue;
+      const th = (a[q*n+q] - a[p*n+p]) / (2 * apq);
+      const t = (th >= 0 ? 1 : -1) / (Math.abs(th) + Math.sqrt(th * th + 1));
+      const cs = 1 / Math.sqrt(t * t + 1), sn = t * cs;
+      for (let k = 0; k < n; k++){ const x = a[k*n+p], y = a[k*n+q]; a[k*n+p] = cs*x - sn*y; a[k*n+q] = sn*x + cs*y; }
+      for (let k = 0; k < n; k++){ const x = a[p*n+k], y = a[q*n+k]; a[p*n+k] = cs*x - sn*y; a[q*n+k] = sn*x + cs*y; }
+    }
+  }
+  return Array.from({ length: n }, (_, i) => a[i * n + i]);
+}
+function svals(X){ // via eigenvalues of the small-side Gram matrix, descending
+  const W = X.r <= X.c ? X : tr(X);
+  return jacobiEig(mm(W, tr(W))).map(v => Math.sqrt(Math.max(v, 0))).sort((p, q) => q - p);
+}
+const cond = sv => sv[0] / Math.max(sv[sv.length - 1], 1e-300);
+// test_update_rms_is_consistent_across_shapes: lr=1, no momentum, Gaussian grad
+function updateRms(r, c, u){
+  const o = ns5(gauss(r, c, u));
+  const raw = rmsOf(o);                       // no Moonshot scale
+  return { raw, scaled: raw * 0.2 * Math.sqrt(Math.max(r, c)) };
+}
+// test_muon.py _train: deep linear net (two d x d layers, no bias) on an
+// ill-conditioned target, full batch. Loss uses Sigma = X^T X, so each step is
+// d x d work instead of n x d -- same numbers, cheaper.
+function trainIsolated({ muon, lr = 0.02, mom = 0.95, steps = 60, decade = -2, seed = 0, d = 48, n = 512 }){
+  const u = rng(seed * 7919 + 1);
+  const target = withSpectrum(d, d, logspace(0, decade, d), u);
+  const Sig = (() => { const X = gauss(n, d, u); return mm(tr(X), X); })();
+  const bound = 1 / Math.sqrt(d); // nn.Linear default init
+  const init = () => { const W = M(d, d); for (let i = 0; i < W.d.length; i++) W.d[i] = (u() * 2 - 1) * bound; return W; };
+  const W = [init(), init()], buf = [M(d, d), M(d, d)];
+  const lossGrad = () => {
+    const D = lin(1, mm(W[1], W[0]), -1, target), DS = mm(D, Sig);
+    let s = 0; for (let i = 0; i < D.d.length; i++) s += DS.d[i] * D.d[i];
+    const gA = lin(2 / (n * d), DS);
+    return { L: s / (n * d), g: [mm(tr(W[1]), gA), mm(gA, tr(W[0]))] };
+  };
+  const curve = [];
+  let L0 = null;
+  for (let step = 0; step <= steps; step++){
+    const { L, g } = lossGrad();
+    if (L0 === null) L0 = L;
+    curve.push([step, L / L0]);
+    if (step === steps) break;
+    for (let j = 0; j < 2; j++){
+      buf[j] = lin(mom, buf[j], 1, g[j]);                    // M = mu M + G
+      let upd;
+      if (muon){
+        const nest = lin(1, g[j], mom, buf[j]);              // Nesterov: G + mu M
+        upd = lin(0.2 * Math.sqrt(d), ns5(nest));            // Moonshot RMS scale
+      } else upd = buf[j];                                    // torch SGD(momentum)
+      W[j] = lin(1, W[j], -lr, upd);
+    }
+  }
+  return curve;
+}
+// ---- core:end ----
+
+// ---- rendering ----
+function mix(h1, h2, t){
+  const p = h => { h = h.replace('#', ''); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); };
+  const a = p(h1), b = p(h2); return `rgb(${a.map((x, i) => Math.round(x + (b[i] - x) * t)).join(',')})`;
+}
+let nsSeed = 1, raceSeed = 0;
+const getCond = bind('cond', () => schedule(renderNS));
+const getSteps = bind('nsteps', () => schedule(renderNS));
+document.getElementById('shape').addEventListener('change', () => schedule(renderNS));
+document.getElementById('resample').addEventListener('click', () => { nsSeed++; renderNS(); });
+
+let nsCache = { key: null };
+function nsData(){
+  const [r, c] = document.getElementById('shape').value.split('x').map(Number);
+  const key = [r, c, getCond(), nsSeed].join();
+  if (nsCache.key !== key){
+    const k = Math.min(r, c), G = withSpectrum(r, c, logspace(0, -getCond(), k), rng(nsSeed));
+    nsCache = { key, sv: nsTrace(G, 8).map(svals), G };
+  }
+  return nsCache;
+}
+function renderNS(){
+  const { sv } = nsData(), s = getSteps(), k = sv[0].length;
+  const acc = css('--accent'), acc2 = css('--accent-2');
+  const all = sv.flat().filter(v => v > 0);
+  const series = Array.from({ length: k }, (_, i) => ({
+    data: sv.map((row, it) => [it, Math.max(row[i], 1e-12)]),
+    color: mix(acc2, acc, k > 1 ? i / (k - 1) : 0), width: 1.5,
+  }));
+  const ch = lineChart(document.getElementById('traj'), series,
+    { logY: true, yMin: Math.max(Math.min(...all), 1e-8) * 0.8, yMax: 2, xLabel: 'Newton–Schulz iteration', aspect: 0.42 });
+  const { ctx, X, Y, pad, h, w } = ch;
+  ctx.fillStyle = css('--good'); ctx.globalAlpha = 0.12;
+  ctx.fillRect(pad.l, Y(1.2), w - pad.l - pad.r, Y(0.65) - Y(1.2)); ctx.globalAlpha = 1;
+  ctx.strokeStyle = css('--ink'); ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(X(s), pad.t); ctx.lineTo(X(s), h - pad.b); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = css('--muted'); ctx.textAlign = 'left'; ctx.fillText('0.65–1.2', pad.l + 4, Y(1.2) - 4);
+
+  // quintic f on [0, 1.3]
+  const [a, b, c] = NS, f = x => a * x + b * x ** 3 + c * x ** 5;
+  const xs = Array.from({ length: 131 }, (_, i) => i / 100);
+  const q = lineChart(document.getElementById('quintic'), [
+    { data: xs.map(x => [x, x]), color: css('--muted'), dash: [4, 4], width: 1 },
+    { data: xs.map(x => [x, f(x)]), color: acc },
+  ], { yMin: 0, yMax: 1.6, xLabel: 'σ before the step', aspect: 0.42 });
+  const cur = sv[s], lo = Math.min(...cur), hi = Math.max(...cur);
+  if (s > 0){
+    q.ctx.fillStyle = css('--good'); q.ctx.globalAlpha = 0.18;
+    q.ctx.fillRect(q.pad.l, q.Y(hi), q.w - q.pad.l - q.pad.r, q.Y(lo) - q.Y(hi)); q.ctx.globalAlpha = 1;
+    q.ctx.fillStyle = acc2;
+    // each step maps sigma -> f(sigma) exactly; f reorders values, so plot (x, f(x)), not sorted pairs
+    sv[s - 1].forEach(x => { q.ctx.beginPath(); q.ctx.arc(q.X(x), q.Y(f(x)), 3.5, 0, 7); q.ctx.fill(); });
+  } else {
+    q.ctx.fillStyle = acc2;
+    cur.forEach(x => { q.ctx.beginPath(); q.ctx.arc(q.X(x), q.Y(0) - 4, 3, 0, 7); q.ctx.fill(); });
+  }
+  const fmt = v => v < 1e-3 ? v.toExponential(1) : v.toFixed(3);
+  const cAfter = cond(cur);
+  setStats(document.getElementById('ns-stats'), [
+    ['condition number, input', cond(sv[0]).toPrecision(3)],
+    [`after ${s} step${s === 1 ? '' : 's'}`, `<span class="${cAfter < 2 ? 'ok' : 'bad'}">${cAfter < 1e4 ? cAfter.toPrecision(3) : cAfter.toExponential(1)}</span>`],
+    ['smallest singular value', fmt(lo)], ['largest singular value', fmt(hi)],
+  ]);
+}
+
+function renderRMS(){
+  const shapes = [[64, 64], [16, 512], [512, 16], [128, 256], [256, 128]];
+  const rows = shapes.map(([r, cc]) => ({ r, c: cc, ...updateRms(r, cc, rng(r * 1000 + cc)) }));
+  const spread = key => { const v = rows.map(x => x[key]); return Math.max(...v) / Math.min(...v); };
+  const sr = spread('raw'), ss = spread('scaled');
+  document.getElementById('rms-table').innerHTML = `<table class="rms">
+    <tr><th>shape \\(A\\times B\\)</th><th>\\(1/\\sqrt{\\max(A,B)}\\)</th><th>RMS, no scale</th><th>RMS, \\(\\times\\, 0.2\\sqrt{\\max(A,B)}\\)</th></tr>
+    ${rows.map(x => `<tr><td>${x.r} × ${x.c}</td><td>${(1 / Math.sqrt(Math.max(x.r, x.c))).toFixed(4)}</td><td>${x.raw.toFixed(4)}</td><td>${x.scaled.toFixed(4)}</td></tr>`).join('')}
+    <tr class="spread"><td>max / min</td><td></td><td class="bad">${sr.toFixed(2)}×</td><td class="ok">${ss.toFixed(2)}×</td></tr></table>`;
+}
+
+const getLr = bind('lr', () => schedule(renderRace));
+const getRaceSteps = bind('steps', () => schedule(renderRace));
+const getDecade = bind('decade', () => schedule(renderRace));
+document.getElementById('reseed').addEventListener('click', () => { raceSeed++; renderRace(); });
+let raceCache = { key: null };
+function renderRace(){
+  const lr = Math.pow(10, getLr()), steps = getRaceSteps(), decade = -getDecade();
+  const key = [lr, steps, decade, raceSeed].join();
+  if (raceCache.key !== key){
+    const opts = { lr, steps, decade, seed: raceSeed };
+    raceCache = { key, m: trainIsolated({ ...opts, muon: true }), g: trainIsolated({ ...opts, muon: false }) };
+  }
+  const { m, g } = raceCache;
+  const finite = d => d.map(([x, y]) => [x, Number.isFinite(y) ? Math.min(y, 1e6) : 1e6]);
+  const all = [...m, ...g].map(p => p[1]).filter(Number.isFinite);
+  lineChart(document.getElementById('race'), [
+    { data: finite(g), color: css('--accent-2') }, { data: finite(m), color: css('--accent') },
+  ], { logY: true, yMin: Math.max(Math.min(...all), 1e-8), yMax: Math.min(Math.max(...all, 1), 1e6), xLabel: 'step', aspect: 0.45 });
+  const fm = m.at(-1)[1], fg = g.at(-1)[1], e = v => Number.isFinite(v) ? v.toExponential(2) : 'diverged';
+  setStats(document.getElementById('race-stats'), [
+    ['loss left, Muon', e(fm)], ['loss left, SGD+momentum', e(fg)],
+    ['SGD+mom ÷ Muon', Number.isFinite(fm) && Number.isFinite(fg) ? (fg / fm).toPrecision(3) + '×' : '—'],
+  ]);
+}
+
+window.render = () => { renderNS(); renderRace(); };
+renderRMS();
+window.render();
+</script>
+</body>
+</html>
