@@ -7,6 +7,8 @@ changes that made it work at LLM scale.
 > Liu et al., Moonshot AI — [arXiv:2502.16982](https://arxiv.org/abs/2502.16982)
 > (Muon itself is by Keller Jordan et al., 2024)
 
+**Interactive demo:** <https://muon-minimal.netlify.app>. Drag the sliders and watch the mechanism run in your browser.
+
 Muon is SGD-with-momentum where the momentum buffer is replaced by its nearest
 semi-orthogonal matrix before the step:
 
